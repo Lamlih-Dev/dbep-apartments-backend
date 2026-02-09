@@ -25,4 +25,5 @@ COPY docker/apache.conf /etc/apache2/sites-available/000-default.conf
 # Render provides PORT; Apache must listen on it
 CMD bash -lc 'sed -ri "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf \
  && sed -ri "s/:80/:${PORT}/" /etc/apache2/sites-available/000-default.conf \
- && apache2-foreground'
+ && chmod +x docker/start.sh \
+ && docker/start.sh'
