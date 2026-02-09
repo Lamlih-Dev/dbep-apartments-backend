@@ -1,7 +1,9 @@
 nelmio_cors:
     defaults:
         origin_regex: true
-        allow_origin: ['http://localhost:5173']
+        allow_origin:
+            - '^http://localhost:5173$'
+            - '^https://.*\.netlify\.app$'
         allow_methods: ['GET', 'OPTIONS', 'POST', 'PUT', 'PATCH', 'DELETE']
         allow_headers: ['Content-Type', 'Authorization']
         expose_headers: ['Link']
