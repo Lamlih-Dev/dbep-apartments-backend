@@ -28,10 +28,8 @@ RUN mkdir -p var/cache var/log \
  && chmod -R 775 var
 
 # Render provides PORT; Apache must listen on it
-CMD bash -lc 'sed -ri "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf \
- && sed -ri "s/:80/:${PORT}/" /etc/apache2/sites-available/000-default.conf \
- && mkdir -p /var/www/html/var/cache /var/www/html/var/log \
- && chown -R www-data:www-data /var/www/html/var \
- && chmod -R 775 /var/www/html/var \
- && chmod +x /var/www/html/docker/start.sh \
- && /var/www/html/docker/start.sh'
+CMD bash -lc '\
+  sed -ri "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf && \
+  sed -ri "s/:80/:${PORT}/" /etc/apache2/sites-available/000-default.conf && \
+  chmod +x /var/www/html/docker/start.sh && \
+  /var/www/html/docker/start.sh'
