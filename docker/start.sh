@@ -8,9 +8,9 @@ chmod -R ug+rwX /var/www/html/var
 
 echo "DB URL is: ${DATABASE_URL:-NOT_SET}"
 
-echo "Running migrations as www-data..."
-if ! su -s /bin/sh www-data -c "php /var/www/html/bin/console doctrine:migrations:migrate --no-interaction --allow-no-migration -vvv"; then
-  echo "MIGRATIONS FAILED (but continuing to start Apache)"
+echo "Creating/updating DB schema as www-data (temporary)..."
+if ! su -s /bin/sh www-data -c "php /var/www/html/bin/console doctrine:schema:update --force --env=prod"; then
+  echo "SCHEMA UPDATE FAILED (but continuing to start Apache)"
 fi
 
 echo "Starting Apache..."
