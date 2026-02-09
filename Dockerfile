@@ -22,6 +22,11 @@ COPY --from=vendor /app/vendor /var/www/html/vendor
 # Use our Apache vhost (front controller)
 COPY docker/apache.conf /etc/apache2/sites-available/000-default.conf
 
+# Symfony needs write access to var/
+RUN mkdir -p var/cache var/log \
+ && chown -R www-data:www-data var \
+ && chmod -R 775 var
+
 # Render provides PORT; Apache must listen on it
 CMD bash -lc 'sed -ri "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf \
  && sed -ri "s/:80/:${PORT}/" /etc/apache2/sites-available/000-default.conf \
