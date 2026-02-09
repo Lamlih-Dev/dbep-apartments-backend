@@ -33,4 +33,5 @@ CMD bash -lc 'sed -ri "s/Listen 80/Listen ${PORT}/" /etc/apache2/ports.conf \
  && mkdir -p /var/www/html/var/cache /var/www/html/var/log \
  && chown -R www-data:www-data /var/www/html/var \
  && chmod -R 775 /var/www/html/var \
- && apache2-foreground'
+ && chmod +x /var/www/html/docker/start.sh \
+ && /var/www/html/docker/start.sh'
