@@ -15,6 +15,15 @@ RUN apt-get update && apt-get install -y \
  && a2enmod rewrite \
  && rm -rf /var/lib/apt/lists/*
 
+# Allow Symfony .htaccess rewrites
+RUN printf '%s\n' \
+  '<Directory /var/www/html/public>' \
+  '    AllowOverride All' \
+  '    Require all granted' \
+  '</Directory>' \
+  > /etc/apache2/conf-available/symfony.conf \
+ && a2enconf symfony
+
 # Apache: set Symfony public/ as docroot
 ENV APACHE_DOCUMENT_ROOT=/var/www/html/public
 RUN sed -ri -e 's!/var/www/html!${APACHE_DOCUMENT_ROOT}!g' /etc/apache2/sites-available/*.conf \
