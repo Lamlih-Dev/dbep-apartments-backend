@@ -11,7 +11,7 @@ FROM php:8.2-apache
 # System deps + PHP extensions (Postgres + SQLite)
 RUN apt-get update && apt-get install -y \
     git unzip libpq-dev \
- && docker-php-ext-install pdo pdo_pgsql pdo_sqlite \
+ && docker-php-ext-install pdo pdo_pgsql \
  && a2enmod rewrite \
  && rm -rf /var/lib/apt/lists/*
 
