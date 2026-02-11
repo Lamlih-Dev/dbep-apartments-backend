@@ -19,78 +19,77 @@ echo "Clearing + warming cache as www-data..."
 su -s /bin/sh www-data -c "${CONSOLE} cache:clear" || true
 su -s /bin/sh www-data -c "${CONSOLE} cache:warmup" || true
 
-echo "Detecting Doctrine-mapped User table..."
-USER_FULL_TABLE="$(su -s /bin/sh www-data -c "php -r '
-require \"'${APP_DIR}'/vendor/autoload.php\";
-$kernel = new App\Kernel(\"prod\", false);
-$kernel->boot();
-$em = $kernel->getContainer()->get(\"doctrine\")->getManager();
-$meta = $em->getClassMetadata(App\Entity\User::class);
-$schema = method_exists($meta, \"getSchemaName\") ? $meta->getSchemaName() : null;
-$table = $meta->getTableName();
-if (!$schema) { $schema = \"public\"; }
-echo $schema.\".\".$table;
-'")"
-
-USER_SCHEMA="$(echo "$USER_FULL_TABLE" | cut -d. -f1)"
-USER_TABLE="$(echo "$USER_FULL_TABLE" | cut -d. -f2)"
-SEQ_NAME="${USER_TABLE}_id_seq"
-PK_NAME="${USER_TABLE}_pkey"
-
-echo "User table (Doctrine): ${USER_SCHEMA}.${USER_TABLE}"
-
-echo "FORCING id column + default + backfill (demo bootstrap)..."
+echo "FORCE FIX: add/backfill id on any table that has email+password (all schemas)..."
+# This catches the User table even if it's not named "user" and even if schema != public.
 su -s /bin/sh www-data -c "${CONSOLE} doctrine:query:sql \"
 DO \\$\\$
+DECLARE t record;
+DECLARE seq_name text;
+DECLARE pk_name text;
 BEGIN
-  -- Ensure sequence exists
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_class c
-    JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE c.relkind='S' AND c.relname='${SEQ_NAME}' AND n.nspname='${USER_SCHEMA}'
-  ) THEN
-    EXECUTE format('CREATE SEQUENCE %I.%I', '${USER_SCHEMA}', '${SEQ_NAME}');
-  END IF;
-
-  -- Add id column if missing
-  IF NOT EXISTS (
-    SELECT 1
+  FOR t IN
+    SELECT table_schema, table_name
     FROM information_schema.columns
-    WHERE table_schema='${USER_SCHEMA}' AND table_name='${USER_TABLE}' AND column_name='id'
-  ) THEN
-    EXECUTE format('ALTER TABLE %I.%I ADD COLUMN id INTEGER', '${USER_SCHEMA}', '${USER_TABLE}');
-  END IF;
+    WHERE table_schema NOT IN ('pg_catalog','information_schema')
+    GROUP BY table_schema, table_name
+    HAVING
+      SUM(CASE WHEN column_name='email' THEN 1 ELSE 0 END) > 0
+      AND SUM(CASE WHEN column_name='password' THEN 1 ELSE 0 END) > 0
+  LOOP
+    seq_name := t.table_name || '_id_seq';
+    pk_name  := t.table_name || '_pkey';
 
-  -- Default id to nextval
-  EXECUTE format(
-    'ALTER TABLE %I.%I ALTER COLUMN id SET DEFAULT nextval(%L)',
-    '${USER_SCHEMA}', '${USER_TABLE}', '${USER_SCHEMA}.${SEQ_NAME}'
-  );
+    -- ensure sequence exists
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_class c
+      JOIN pg_namespace n ON n.oid=c.relnamespace
+      WHERE c.relkind='S' AND c.relname=seq_name AND n.nspname=t.table_schema
+    ) THEN
+      EXECUTE format('CREATE SEQUENCE %I.%I', t.table_schema, seq_name);
+    END IF;
 
-  -- Backfill existing rows
-  EXECUTE format(
-    'UPDATE %I.%I SET id = nextval(%L) WHERE id IS NULL',
-    '${USER_SCHEMA}', '${USER_TABLE}', '${USER_SCHEMA}.${SEQ_NAME}'
-  );
+    -- add id column if missing
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+      WHERE table_schema=t.table_schema AND table_name=t.table_name AND column_name='id'
+    ) THEN
+      EXECUTE format('ALTER TABLE %I.%I ADD COLUMN id INTEGER', t.table_schema, t.table_name);
+    END IF;
 
-  -- Try NOT NULL
-  BEGIN
-    EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN id SET NOT NULL', '${USER_SCHEMA}', '${USER_TABLE}');
-  EXCEPTION WHEN others THEN
-  END;
+    -- set default nextval
+    EXECUTE format(
+      'ALTER TABLE %I.%I ALTER COLUMN id SET DEFAULT nextval(%L)',
+      t.table_schema, t.table_name, t.table_schema||'.'||seq_name
+    );
 
-  -- Try primary key (ignore if already exists)
-  BEGIN
-    EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY (id)', '${USER_SCHEMA}', '${USER_TABLE}', '${PK_NAME}');
-  EXCEPTION WHEN others THEN
-  END;
+    -- backfill null ids
+    EXECUTE format(
+      'UPDATE %I.%I SET id = nextval(%L) WHERE id IS NULL',
+      t.table_schema, t.table_name, t.table_schema||'.'||seq_name
+    );
+
+    -- try set NOT NULL (ignore failures)
+    BEGIN
+      EXECUTE format('ALTER TABLE %I.%I ALTER COLUMN id SET NOT NULL', t.table_schema, t.table_name);
+    EXCEPTION WHEN others THEN
+    END;
+
+    -- try add PK (ignore failures if PK already exists / different PK exists)
+    BEGIN
+      EXECUTE format('ALTER TABLE %I.%I ADD CONSTRAINT %I PRIMARY KEY (id)', t.table_schema, t.table_name, pk_name);
+    EXCEPTION WHEN others THEN
+    END;
+
+    -- try unique index on email (ignore failures)
+    BEGIN
+      EXECUTE format('CREATE UNIQUE INDEX IF NOT EXISTS %I ON %I.%I (email)', 'uniq_'||t.table_name||'_email', t.table_schema, t.table_name);
+    EXCEPTION WHEN others THEN
+    END;
+
+  END LOOP;
 END
 \\$\\$;
 \" " || true
-
-echo "Ensuring unique index on email (best effort)..."
-su -s /bin/sh www-data -c "${CONSOLE} doctrine:query:sql \
-\"CREATE UNIQUE INDEX IF NOT EXISTS UNIQ_IDENTIFIER_EMAIL ON \\\"${USER_SCHEMA}\\\".\\\"${USER_TABLE}\\\" (email);\"" || true
 
 echo "Creating admin user if missing..."
 su -s /bin/sh www-data -c "${CONSOLE} app:user:create \"${ADMIN_EMAIL}\" \"${ADMIN_PASSWORD}\" \"${ADMIN_MODE}\"" || true
