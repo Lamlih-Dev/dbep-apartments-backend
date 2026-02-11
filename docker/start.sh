@@ -15,22 +15,26 @@ echo "Clearing + warming cache..."
 su -s /bin/sh www-data -c "${CONSOLE} cache:clear" || true
 su -s /bin/sh www-data -c "${CONSOLE} cache:warmup" || true
 
-echo "NUCLEAR DEMO RESET: drop + recreate users table (email PK)..."
-su -s /bin/sh www-data -c "${CONSOLE} doctrine:query:sql \"
-DROP TABLE IF EXISTS users;
-CREATE TABLE users (
-  email VARCHAR(180) PRIMARY KEY,
-  roles JSON NOT NULL,
-  password VARCHAR(255) NOT NULL
-);
-\" " || true
+# --- JWT KEYS FIX FOR RENDER ---
+echo "Preparing JWT keys..."
+mkdir -p "${APP_DIR}/config/jwt"
 
-if [ -n "${ADMIN_EMAIL}" ] && [ -n "${ADMIN_PASSWORD}" ]; then
-  echo "Seeding admin user..."
-  su -s /bin/sh www-data -c "${CONSOLE} app:user:create \"${ADMIN_EMAIL}\" \"${ADMIN_PASSWORD}\" \"${ADMIN_MODE:-admin}\"" || true
-else
-  echo "Admin seed skipped (set ADMIN_EMAIL and ADMIN_PASSWORD to auto-create)."
+# If Render secret files exist, copy them to a readable location
+if [ -f /etc/secrets/private.pem ] && [ -f /etc/secrets/public.pem ]; then
+  echo "Copying JWT keys from /etc/secrets -> config/jwt"
+  cp /etc/secrets/private.pem "${APP_DIR}/config/jwt/private.pem"
+  cp /etc/secrets/public.pem  "${APP_DIR}/config/jwt/public.pem"
 fi
+
+# Ensure readable by www-data (Lexik needs private key readable)
+chown -R www-data:www-data "${APP_DIR}/config/jwt" || true
+chmod 600 "${APP_DIR}/config/jwt/private.pem" || true
+chmod 644 "${APP_DIR}/config/jwt/public.pem"  || true
+
+# Force Lexik to use the copied keys (overrides Render env paths)
+export JWT_SECRET_KEY="${APP_DIR}/config/jwt/private.pem"
+export JWT_PUBLIC_KEY="${APP_DIR}/config/jwt/public.pem"
+export JWT_PASSPHRASE="${JWT_PASSPHRASE:-}"
 
 echo "Starting Apache..."
 exec apache2-foreground
