@@ -9,8 +9,9 @@ RUN composer install --no-dev --prefer-dist --no-interaction --no-progress --no-
 FROM php:8.2-apache
 
 # System deps + PHP extensions (Postgres)
+# System deps + PHP extensions (Postgres + Intl)
 RUN apt-get update && apt-get install -y \
-    git unzip libpq-dev \
+    git unzip libpq-dev libicu-dev pkg-config \
  && docker-php-ext-install pdo pdo_pgsql intl \
  && a2enmod rewrite \
  && rm -rf /var/lib/apt/lists/*
