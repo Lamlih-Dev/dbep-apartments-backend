@@ -11,7 +11,7 @@ FROM php:8.2-apache
 # System deps + PHP extensions (Postgres)
 RUN apt-get update && apt-get install -y \
     git unzip libpq-dev \
- && docker-php-ext-install pdo pdo_pgsql \
+ && docker-php-ext-install pdo pdo_pgsql intl \
  && a2enmod rewrite \
  && rm -rf /var/lib/apt/lists/*
 
